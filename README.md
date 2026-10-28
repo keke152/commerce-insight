@@ -1,90 +1,83 @@
 # Commerce Insight · 知购
 
-**订单分析与复购洞察工作台**
+**授权订单接入、商品分类与复购洞察工作台 · v1.1.0**
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
-![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-D71F00)
-![Mode](https://img.shields.io/badge/Mode-Local_Demo-64748B)
+![Python](https://img.shields.io/badge/Python-3.10%E2%80%933.13-3776AB)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688)
+![scikit-learn](https://img.shields.io/badge/ML-TF--IDF%20%2B%20Logistic%20Regression-orange)
 
-将授权导出的跨平台订单转换为统一的经营视图：导入 CSV、自动归类、检索订单，并按客户购买节奏识别复购机会。使用可解释规则建立分类与排序基线，保留后续替换模型的实现边界。
+面向电商经营场景，把客户授权导出的订单整理为统一视图：预检 CSV、文本模型分类、人工复核、客户分层、复购机会排序及报告导出。安装依赖后可离线演示，无需模型 API Key。
 
-[快速开始](#快速开始) · [使用手册](docs/user-guide.md) · [架构与数据流](docs/architecture.md) · [开发说明](CONTRIBUTING.md)
+![工作台预览](docs/images/workspace.png)
 
-## 核心能力
+[使用手册](docs/user-guide.md) · [架构与数据口径](docs/architecture.md) · [模型说明](docs/model-card.md) · [面试演示与问答](docs/interview-guide.md)
+
+## 功能
 
 | 模块 | 已实现能力 |
 | --- | --- |
-| 订单接入 | CSV 字段标准化；按「平台 + 订单号」识别重复订单 |
-| 经营总览 | 订单数量、近 30 天销售额、成交客户与品类分布 |
-| 品类识别 | 商品名称关键词匹配，保留命中理由与规则分值 |
-| 订单检索 | 按商品、客户、订单号搜索，支持品类和平台筛选接口 |
-| 复购洞察 | 按客户与品类计算购买间隔、周期临近程度和候选排序 |
-| 数据存储 | SQLAlchemy 数据层；默认 SQLite，可配置 MySQL |
-
-## 工作流程
-
-```mermaid
-flowchart LR
-    A[授权 CSV] --> B[字段解析与订单标准化]
-    B --> C[品类规则匹配]
-    C --> D[(订单数据库)]
-    D --> E[经营指标与订单检索]
-    D --> F[客户品类购买周期]
-    F --> G[复购机会排序]
-    E --> H[浏览器工作台]
-    G --> H
-```
+| 授权订单接入 | 标准英文 / 常见中文字段映射，UTF-8 / GB18030，8 MB / 10,000 行限制 |
+| 导入质量控制 | 预检不写库、错误行定位、授权声明、文件 SHA256 校验、事务写入、两级去重、批次记录 |
+| 本地商品分类 | 字符 TF-IDF + 逻辑回归；6 类；真实训练与推断；可查看文本特征、分值和模型说明 |
+| 人工复核 | 待复核筛选、修改或确认分类、保留原模型结果与复核记录 |
+| 经营看板 | 实际订单统计、真实计算的30天环比、品类分布、分页与平台筛选 |
+| 客户洞察 | R/F/M 固定规则分层、购买日间隔中位数、复购优先排序及原因解释 |
+| 导出 | 按筛选条件导出全部订单 CSV，复购清单 CSV，独立 HTML 经营报告 |
 
 ## 快速开始
 
-需要 **Python 3.10+**。在 Windows PowerShell 中执行：
+需要 **Python 3.10–3.13**。Windows 双击 `start.bat`，或手动运行：
 
 ```powershell
-git clone https://github.com/keke152/commerce-insight.git
-cd commerce-insight
-.\start.bat
+py -3.10 -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python -m uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-首次运行会建立虚拟环境、安装依赖，并生成虚构演示订单。浏览器打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)，保持服务窗口运行。
+浏览器打开 [本机工作台](http://127.0.0.1:8000)，首次启动生成240条虚构订单。运行数据默认保存在 `runtime/commerce.db`；检测到旧版根目录 `demo.db` 时继续使用旧库，只添加新表，不改写原分类。旧记录在界面标为“历史记录”。
 
-其他平台可在项目根目录创建 Python 虚拟环境，安装 `requirements.txt`，再运行：
+### 5分钟体验
 
-```bash
-python -m uvicorn app:app --host 127.0.0.1 --port 8000
+1. 查看总览、待复核数、真实环比和客户分层。
+2. 导入 `sample_orders_cn.csv`，查看中文字段映射、预检及分类结果。
+3. 填写“虚构样例”来源，确认授权声明并导入；重复导入验证去重。
+4. 筛选“仅待复核”，人工确认一个分类，观察总览和复购清单更新。
+5. 在模型实验台输入商品名称，查看分值、特征和模型限制。
+6. 打开经营报告，或导出订单及复购清单。
+
+## 验证
+
+```powershell
+.\.venv\Scripts\python -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python -m unittest discover -s tests -v
+node --check static/app.js
 ```
 
-### 体验一个完整流程
-
-1. 查看经营总览及品类分布。
-2. 导入仓库中的 `sample_orders.csv`，观察订单与复购清单更新。
-3. 重复导入同一文件，查看去重结果。
-4. 搜索客户或商品，结合购买次数、平均周期和最近购买日期解释复购排序。
+测试使用临时数据库，不接触实际运行数据。覆盖输入校验、授权拦截、重复导入、事务完整性、文件摘要、分类复核、全量导出及周期计算。CI 配置 Python 3.10 / 3.12。
 
 ## 项目结构
 
 ```text
-commerce-insight/
-├── app.py                # 接口、数据模型、导入与分析逻辑
-├── static/               # 中文工作台与浏览器交互
-├── docs/                 # 使用手册、架构和后续计划
-├── sample_orders.csv     # 虚构样例订单
-├── .env.example          # 数据库配置示例
-├── requirements.txt      # 固定版本依赖
-└── start.bat             # Windows 启动入口
+app.py                  Uvicorn 兼容入口
+server.py               HTTP、数据表、事务与报告
+classification.py       文本模型训练、推断与样例评测
+ingestion.py            CSV 映射、校验及文件内去重
+insights.py             客户分层与复购周期排序
+data/catalog.json       虚构商品训练集与独立测试集
+static/                 中文工作台，无外部字体或脚本
+tests/                  临时库自动化测试
+docs/                   使用、架构、模型与面试演示文档
+sample_orders*.csv      虚构标准/中文订单
 ```
-
-## 文档
-
-| 文档 | 内容 |
-| --- | --- |
-| [使用手册](docs/user-guide.md) | 数据字段、接口、MySQL 配置与操作讲解 |
-| [架构与数据流](docs/architecture.md) | 模块职责、去重方式、规则分数与运行数据 |
-| [后续计划](docs/roadmap.md) | 数据接入、模型评估及服务化方向 |
-| [开发与贡献](CONTRIBUTING.md) | 本地开发、问题反馈与文档约定 |
 
 ## 实现范围
 
-- 默认数据是虚构样例；当前通过 CSV 导入订单，尚未接入真实电商平台。
-- 分类和复购使用规则基线，分值用于解释和排序，不是经过校准的购买概率。
-- 当前面向本地使用；多租户鉴权、数据库迁移及平台增量同步列入[后续计划](docs/roadmap.md)。
+- 当前通过授权导出 CSV 接入；没有登录、爬取真实平台，也没有平台官方 API 连接器。
+- 分类是真实运行的本地机器学习模型；不是大模型 Agent。96条训练、24条独立测试均为人工编写的虚构商品，评测不代表真实业务效果。
+- 复购使用可解释周期规则，优先分不是购买概率；人工修改只影响当前分析，不自动训练。
+- 默认订单均为虚构数据。用户导入后可能混合自己的数据，报告应结合实际来源解释。
+- `customer_id` 必须是商家已统一的客户ID；不同平台原始编号需事先映射，或加平台前缀避免误合并。
+- 面向本地单工作区；没有登录鉴权、租户隔离和真实自动营销。请绑定 `127.0.0.1` 运行。
+- SQLAlchemy 支持配置 MySQL，本次自动化验证使用 SQLite；MySQL 端到端兼容性尚未实测。
+
+更多设计取舍见[架构](docs/architecture.md)、[后续计划](docs/roadmap.md)及[更新记录](CHANGELOG.md)。
