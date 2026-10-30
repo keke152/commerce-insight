@@ -1,6 +1,6 @@
 # Commerce Insight · 知购
 
-**授权订单接入、商品分类与复购洞察工作台 · v1.1.0**
+**授权订单接入、商品分类与复购洞察工作台 · v1.2.0**
 
 ![Python](https://img.shields.io/badge/Python-3.10%E2%80%933.13-3776AB)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688)
@@ -12,6 +12,10 @@
 
 [使用手册](docs/user-guide.md) · [架构与数据口径](docs/architecture.md) · [模型说明](docs/model-card.md) · [面试演示与问答](docs/interview-guide.md)
 
+## 网站式工作台
+
+深绿侧栏与浅色内容区，六个页面独立切换；支持顶部全局搜索、浏览器历史与手机导航。首页提供由订单实际计算的7/30天销售趋势。见[界面与操作说明](docs/website-refresh.md)。
+
 ## 功能
 
 | 模块 | 已实现能力 |
@@ -20,7 +24,7 @@
 | 导入质量控制 | 预检不写库、错误行定位、授权声明、文件 SHA256 校验、事务写入、两级去重、批次记录 |
 | 本地商品分类 | 字符 TF-IDF + 逻辑回归；6 类；真实训练与推断；可查看文本特征、分值和模型说明 |
 | 人工复核 | 待复核筛选、修改或确认分类、保留原模型结果与复核记录 |
-| 经营看板 | 实际订单统计、真实计算的30天环比、品类分布、分页与平台筛选 |
+| 经营看板 | 真实订单统计、30天环比、7/30天销售趋势、品类分布、分页与平台筛选 |
 | 客户洞察 | R/F/M 固定规则分层、购买日间隔中位数、复购优先排序及原因解释 |
 | 导出 | 按筛选条件导出全部订单 CSV，复购清单 CSV，独立 HTML 经营报告 |
 
@@ -51,6 +55,7 @@ py -3.10 -m venv .venv
 .\.venv\Scripts\python -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python -m unittest discover -s tests -v
 node --check static/app.js
+node --check static/navigation.js
 ```
 
 测试使用临时数据库，不接触实际运行数据。覆盖输入校验、授权拦截、重复导入、事务完整性、文件摘要、分类复核、全量导出及周期计算。CI 配置 Python 3.10 / 3.12。

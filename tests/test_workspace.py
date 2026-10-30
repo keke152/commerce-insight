@@ -209,6 +209,25 @@ class ApiTests(unittest.TestCase):
         self.assertIn("&lt;script&gt;",report)
         self.assertIn("'=1+1",self.client.get("/api/export/orders.csv").text)
 
+    def test_trend_window_sums_and_zero_fill(self):
+        today = date.today()
+        rows = [["TODAY","店","C","咖啡",12,1,today.isoformat()],
+                ["WEEK","店","C","咖啡",20,1,(today-timedelta(days=6)).isoformat()],
+                ["MONTH","店","C","咖啡",30,1,(today-timedelta(days=29)).isoformat()],
+                ["OLD","店","C","咖啡",40,1,(today-timedelta(days=30)).isoformat()]]
+        self.post_import(csv_data(rows))
+        week = self.client.get("/api/trends?days=7").json()
+        month = self.client.get("/api/trends?days=30").json()
+        self.assertEqual((week["total"], week["orders"], len(week["series"])), (32,2,7))
+        self.assertEqual(month["total"], self.client.get("/api/summary").json()["revenue_30d"])
+        self.assertEqual(month["total"], 62)
+        self.assertEqual(month["series"][-1]["date"], today.isoformat())
+        self.assertTrue(any(point["amount"] == 0 for point in month["series"]))
+
+    def test_trend_range_validation(self):
+        for days in (0,6,91):
+            self.assertEqual(self.client.get(f"/api/trends?days={days}").status_code,422)
+
     def test_endpoints_and_input_validation(self):
         for path in ("/", "/api/health", "/api/model", "/api/customers", "/api/recommendations"):
             self.assertEqual(self.client.get(path).status_code, 200)

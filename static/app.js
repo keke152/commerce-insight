@@ -3,7 +3,7 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;',
 const money = n => '¥' + Number(n || 0).toLocaleString('zh-CN', {minimumFractionDigits:2,maximumFractionDigits:2});
 const categories = ['食品饮料','美妆个护','家居生活','数码配件','母婴用品','其他'];
 const palette = ['#369767','#73b98c','#afd5b8','#e6bb88','#b8a8e5','#d8ded8'];
-let currentPage = 1, currentOrders = [], profiles = [], preview = null, reviewId = null, orderRequest = 0, toastTimer;
+let currentPage = 1, currentOrders = [], profiles = [], preview = null, reviewId = null, orderRequest = 0, toastTimer, trendDays = 30, trendRequest = 0;
 async function api(path, options) {
   const response = await fetch(path, options);
   if (!response.ok) {
@@ -39,7 +39,7 @@ function renderSummary(s, opps) {
   $('#due-count').textContent=opps.length; $('#category-total').textContent=s.order_count;
   $('#updated').textContent=new Date(s.refreshed_at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
   for (const [id,key] of [['order-growth','order_growth'],['revenue-growth','revenue_growth'],['customer-growth','customer_growth']]) {
-    const n=s[key]; $('#'+id).textContent=n===null?'暂无可比基数':`${n>0?'+':''}${n}%`; $('#'+id).className=n===null?'':'trend';
+    const n=s[key]; $('#'+id).textContent=n===null?'暂无可比基数':`${n>0?'+':''}${n}%`; $('#'+id).className=n===null?'':n<0?'trend negative':'trend';
   }
   const entries=Object.entries(s.categories).sort((a,b)=>b[1]-a[1]); let acc=0; const total=s.order_count||1;
   $('#donut').style.background=entries.length ? 'conic-gradient('+entries.map(([_,n],i)=>{const start=acc/total*100;acc+=n;return `${palette[i%6]} ${start}% ${acc/total*100}%`;}).join(',')+')' : '#edf0ed';
@@ -48,7 +48,9 @@ function renderSummary(s, opps) {
   const selected=$('#platform-filter').value;
   $('#platform-filter').innerHTML='<option value="">全部平台</option>'+s.platforms.map(p=>`<option>${esc(p)}</option>`).join('');
   $('#platform-filter').value=s.platforms.includes(selected)?selected:'';
-  $('#top-opportunities').innerHTML=opps.slice(0,3).map(o=>`<div class="opportunity-row"><div class="customer-avatar">${esc(o.customer_id.slice(-1))}</div><div><div class="opp-name">${esc(o.customer_id)}</div><div class="opp-desc">${esc(o.category)} · ${o.days_since_last}天未购</div></div><div class="bar-wrap"><i style="width:${o.priority_score}%"></i></div><div class="opp-percent">${o.priority_score}分</div></div>`).join('') || '<p class="loading">暂无满足历史周期条件的机会</p>';
+  $('#nav-review-count').textContent=s.review_count;
+  $('#nav-opp-count').textContent=opps.length;
+  $('#top-opportunities').innerHTML=opps.slice(0,3).map(o=>`<a class="opportunity-row" href="#customers-list"><div class="customer-avatar">${esc(o.customer_id.slice(-1))}</div><div><div class="opp-name">${esc(o.customer_id)}</div><div class="opp-desc">${esc(o.category)} · ${o.days_since_last}天未购</div></div><div class="opp-percent">${o.priority_score}分</div></a>`).join('') || '<p class="loading">暂无满足历史周期条件的机会</p>';
   $('#opportunities-body').innerHTML=opps.slice(0,60).map(o=>`<tr><td>${esc(o.customer_id)}<small>${esc(o.category)}</small></td><td>${o.purchase_days}天</td><td>${o.avg_cycle_days}天</td><td>${esc(o.predicted_date)}</td><td><span class="tag">${o.priority_score}分</span></td><td><b>${esc(o.status)}</b><small>${esc(o.reason)}</small></td></tr>`).join('') || '<tr><td colspan="6" class="loading">暂无复购机会</td></tr>';
 }
 function renderCustomers() {
@@ -57,6 +59,30 @@ function renderCustomers() {
   const rows=profiles.filter(p=>!$('#segment-filter').value||p.segment===$('#segment-filter').value);
   $('#customer-body').innerHTML=rows.slice(0,100).map(p=>`<tr><td>${esc(p.customer_id)}</td><td><span class="tag">${esc(p.segment)}</span></td><td>${p.recency_days}天</td><td>${p.frequency}天</td><td>${money(p.monetary)}</td><td>${esc(p.platforms.join(' / '))}</td></tr>`).join('') || '<tr><td colspan="6" class="loading">暂无客户</td></tr>';
 }
+function renderTrend(data) {
+  $('#trend-total').textContent=money(data.total);
+  $('#trend-orders').textContent=`近${data.days}天 · ${data.orders}笔订单`;
+  const width=600,height=210,left=46,right=10,top=14,bottom=32;
+  const plotW=width-left-right,plotH=height-top-bottom;
+  const max=Math.max(100,Math.ceil(Math.max(...data.series.map(d=>d.amount))/100)*100);
+  const points=data.series.map((d,i)=>({x:left+i*plotW/(data.series.length-1),y:top+plotH*(1-d.amount/max),...d}));
+  const line=points.map((p,i)=>`${i?'L':'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const grid=Array.from({length:4},(_,i)=>{const y=top+plotH*i/3;const value=max*(1-i/3);return `<line x1="${left}" x2="${width-right}" y1="${y}" y2="${y}" stroke="#edf1ee" stroke-dasharray="3 5"/><text x="${left-10}" y="${y+4}" text-anchor="end" fill="#a8b4ab" font-size="10">${value>=1000?(value/1000).toFixed(1)+'k':Math.round(value)}</text>`;}).join('');
+  const indices=Array.from(new Set([0,Math.floor((points.length-1)/3),Math.floor((points.length-1)*2/3),points.length-1]));
+  const labels=indices.map(i=>`<text x="${points[i].x}" y="${height-8}" text-anchor="middle" fill="#a8b4ab" font-size="10">${esc(points[i].date.slice(5).replace('-','/'))}</text>`).join('');
+  const dots=points.map(p=>`<circle class="chart-point" cx="${p.x}" cy="${p.y}" r="5" tabindex="0" aria-label="${esc(p.date)}，${p.amount}元，${p.orders}笔订单"><title>${esc(p.date)} · ${money(p.amount)} · ${p.orders}笔订单</title></circle>`).join('');
+  $('#trend-chart').innerHTML=`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="近${data.days}天销售额，共${data.total}元，${data.orders}笔订单"><defs><linearGradient id="sales-fill" x1="0" x2="0" y1="0" y2="1"><stop stop-color="#74b18e" stop-opacity=".20"/><stop offset="1" stop-color="#74b18e" stop-opacity=".015"/></linearGradient></defs>${grid}<path d="${line} L${points.at(-1).x},${top+plotH} L${left},${top+plotH} Z" fill="url(#sales-fill)"/><path d="${line}" fill="none" stroke="#3f966d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>${labels}${dots}</svg>`;
+}
+async function loadTrend() {
+  const requestId=++trendRequest;
+  const data=await api('/api/trends?days='+trendDays);
+  if(requestId===trendRequest)renderTrend(data);
+}
+function serviceState(connected) {
+  $('#service-status').textContent=connected?'本地服务正常 · 数据保存在本机':'服务连接失败，请检查启动状态';
+  $('#runtime-label').textContent=connected?'本地服务已连接':'服务连接失败';
+  $('#runtime-dot').className=connected?'connected':'failed';
+}
 async function load() {
   $('#refresh').disabled=true;
   try {
@@ -64,8 +90,9 @@ async function load() {
     profiles=customers; renderSummary(s,opps); renderCustomers(); await loadOrders();
     $('#model-card').innerHTML=`<b>${esc(card.algorithm)}</b><div class="model-stats"><span>训练样本<strong>${card.training_count}</strong></span><span>独立测试<strong>${card.test_count}</strong></span><span>样例 Macro-F1<strong>${card.macro_f1.toFixed(3)}</strong></span></div><small>${esc(card.dataset_kind)}</small>`;
     $('#batch-list').innerHTML=batches.map(b=>`<div><b>#${b.id} · ${esc(b.source)}</b><span>导入${b.imported}条 · 重复${b.skipped}条 · ${esc(b.created_at.slice(0,16).replace('T',' '))}</span><small title="${esc(b.sha256)}">SHA256 ${esc(b.sha256.slice(0,16))}… · 已记录授权声明</small></div>`).join('')||'<p class="privacy-note">尚无导入记录。默认虚构订单不计入用户导入批次。</p>';
-    $('#service-status').textContent='● 本地服务正常';
-  } catch(error) {toast(error.message); $('#service-status').textContent='服务请求失败';}
+    await loadTrend();
+    serviceState(true);
+  } catch(error) {toast(error.message); serviceState(false);}
   finally {$('#refresh').disabled=false;}
 }
 $('#category-filter').innerHTML+=[...categories].map(c=>`<option>${c}</option>`).join('');
@@ -77,7 +104,11 @@ $('#prev-page').onclick=()=>{currentPage--;loadOrders().catch(e=>toast(e.message
 $('#next-page').onclick=()=>{currentPage++;loadOrders().catch(e=>toast(e.message));};
 $('#refresh').onclick=load; $('#segment-filter').onchange=renderCustomers;
 $('#review-shortcut').onclick=()=>{$('#review-only').checked=true;currentPage=1;loadOrders().catch(e=>toast(e.message));};
-document.querySelectorAll('nav a').forEach(a=>a.addEventListener('click',()=>{document.querySelectorAll('nav a').forEach(n=>n.classList.remove('active'));a.classList.add('active');}));
+document.querySelectorAll('[data-days]').forEach(button=>button.addEventListener('click',async()=>{
+  trendDays=Number(button.dataset.days);
+  document.querySelectorAll('[data-days]').forEach(b=>{b.classList.toggle('selected',b===button);b.setAttribute('aria-pressed',String(b===button));});
+  try{await loadTrend();}catch(e){toast(e.message);}
+}));
 $('#orders-body').addEventListener('click',event=>{
   const button=event.target.closest('[data-review]'); if(!button)return;
   const o=currentOrders.find(o=>o.id===Number(button.dataset.review)); if(!o)return;

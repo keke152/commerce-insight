@@ -23,7 +23,7 @@ from classification import CATEGORIES, classify, model, predict
 from ingestion import MAX_BYTES, parse_csv
 from insights import customer_profiles, opportunities
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 BASE_DIR = Path(__file__).resolve().parent
 HOME = Path(os.getenv("COMMERCE_HOME", str(BASE_DIR / "runtime"))).resolve()
 HOME.mkdir(parents=True, exist_ok=True)
@@ -183,6 +183,22 @@ def summary():
             "order_growth": change(len(current), len(previous)), "revenue_growth": change(amount(current), amount(previous)),
             "customer_growth": change(len({o["customer_id"] for o in current}), len({o["customer_id"] for o in previous})),
             "refreshed_at": datetime.now().isoformat(timespec="seconds")}
+
+
+@app.get("/api/trends")
+def sales_trends(days: int = Query(30, ge=7, le=90)):
+    today = date.today()
+    start = today - timedelta(days=days - 1)
+    buckets = {(start + timedelta(days=i)): {"amount": 0.0, "orders": 0} for i in range(days)}
+    for order in all_orders():
+        if order["ordered_at"] in buckets:
+            bucket = buckets[order["ordered_at"]]
+            bucket["amount"] += order["amount"]
+            bucket["orders"] += 1
+    series = [{"date": day.isoformat(), "amount": round(value["amount"], 2), "orders": value["orders"]}
+              for day, value in buckets.items()]
+    return {"days": days, "series": series, "total": round(sum(row["amount"] for row in series), 2),
+            "orders": sum(row["orders"] for row in series)}
 
 
 @app.get("/api/orders")

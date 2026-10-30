@@ -22,3 +22,4 @@ jobs:
         with:
           node-version: '22'
       - run: node --check static/app.js
+      - run: node --check static/navigation.js
